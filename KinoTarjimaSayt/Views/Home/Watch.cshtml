@@ -1,0 +1,169 @@
+﻿@model KinoTarjimaMVC.Models.Movie
+
+@{
+    // ViewData["Title"] ni to'g'ri o'rnatish
+    ViewData["Title"] = Model?.Title ?? "No Title";  // Agar Title null bo'lsa, "No Title" bo'lsin
+}
+
+<style>
+    #translatedSubtitleOverlay, #originalSubtitleOverlay {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        color: yellow;
+        font-size: 24px;
+        background-color: rgba(0, 0, 0, 0.7);
+        padding: 5px 10px;
+        border-radius: 5px;
+        display: none;
+        z-index: 10;
+        pointer-events: none;
+    }
+
+    #translatedSubtitleOverlay {
+        bottom: 60px; /* Tarjima yuqorida */
+    }
+
+    #originalSubtitleOverlay {
+        bottom: 30px; /* Asl subtitrni pastroq joylashtirdik */
+        color: white;
+    }
+
+    .video-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    video {
+        width: 100%;
+        height: auto;
+    }
+
+
+    :fullscreen .video-wrapper,
+    :-webkit-full-screen .video-wrapper {
+        width: 100%;
+        height: 100%;
+    }
+
+    :fullscreen #originalSubtitleOverlay,
+    :fullscreen #translatedSubtitleOverlay,
+    :-webkit-full-screen #originalSubtitleOverlay,
+    :-webkit-full-screen #translatedSubtitleOverlay {
+        position: fixed;
+        width: auto;
+    }
+
+
+</style>
+
+
+
+<div class="video-wrapper" id="videoContainer">
+    <video id="myVideo" controls>
+        <source src="@Model.VideoPath" type="video/mp4" />
+        <track id="subtitleTrack" label="English" kind="subtitles" srclang="en" src="@Model.SubtitlePath" default />
+        Sizning brauzeringiz video formatini qo‘llab-quvvatlamaydi.
+    </video>
+
+    <!-- Original subtitrlar -->
+    <div id="originalSubtitleOverlay"></div>
+
+    <!-- Tarjima -->
+    <div id="translatedSubtitleOverlay"></div>
+</div>
+
+
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const video = document.getElementById('myVideo');
+        const container = document.getElementById('videoContainer');
+        const originalOverlay = document.getElementById('originalSubtitleOverlay');
+        const translatedOverlay = document.getElementById('translatedSubtitleOverlay');
+
+        const movieTitle = '@ViewData["Title"]'; // O'zgartirilgan
+
+        let isPausedForTranslation = false; // T tugmasi bosilganini tekshirish uchun flag
+        let currentTime = 0;
+
+        // Har 0.1 sekundda original subtitle yangilanishi
+        setInterval(async function () {
+            currentTime = video.currentTime;
+
+            try {
+                // Original subtitrni olish
+                const originalResponse = await fetch(`/Home/Original?time=${currentTime}&title=${movieTitle}`);
+                const originalText = await originalResponse.text();
+
+                if (!isPausedForTranslation) {
+                    if (originalText) {
+                        originalOverlay.innerText = originalText;
+                        originalOverlay.style.display = 'block';
+                        translatedOverlay.style.display = 'none'; // Tarjima ko'rsatilmasin
+                    } else {
+                        originalOverlay.style.display = 'none';
+                    }
+                }
+
+            } catch (error) {
+                console.error("Subtitrlarni yuklashda xatolik:", error);
+                originalOverlay.innerText = "Subtitrni yuklashda xatolik.";
+                originalOverlay.style.display = 'block';
+                translatedOverlay.style.display = 'none';
+            }
+        }, 100); // Har 0.1 sekundda yangilanishi
+
+        // T tugmasi bosilganda tarjima ko'rsatiladi va video pauzaga o'tadi
+            document.addEventListener('keydown', async function (event) {
+        if (event.key.toLowerCase() === 't') {
+            if (isPausedForTranslation) {
+                // Agar T tugmasi yana bosilgan bo'lsa, video davom etsin
+                video.play();
+                isPausedForTranslation = false;
+                translatedOverlay.style.display = 'none'; // Tarjimani yashirish
+            } else {
+                // Agar T tugmasi birinchi marta bosilsa, video pauzaga o'tadi
+                video.pause();
+                isPausedForTranslation = true;
+
+                // Tarjimani olish
+                try {
+                    const translatedResponse = await fetch(`/Subtitle/Translate?time=${currentTime}&title=${movieTitle}`);
+                    const translatedText = await translatedResponse.text();
+
+                    if (translatedText) {
+                        translatedOverlay.innerText = translatedText;
+                        translatedOverlay.style.display = 'block';
+
+                        // 5 sekunddan keyin tarjimani yashirish
+                        setTimeout(() => {
+                            translatedOverlay.style.display = 'none';
+                            isPausedForTranslation = false;
+                            video.play(); // 5 sekunddan keyin video avtomatik davom etadi
+                        }, 5000);
+                    } else {
+                        translatedOverlay.style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error("Tarjima yuklashda xatolik:", error);
+                    translatedOverlay.innerText = "Tarjima yuklanmadi.";
+                    translatedOverlay.style.display = 'block';
+
+                    setTimeout(() => {
+                        translatedOverlay.style.display = 'none';
+                        isPausedForTranslation = false;
+                        video.play();
+                    }, 5000);
+                }
+            }
+        }
+    });
+
+    });
+</script>
+
